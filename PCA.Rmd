@@ -267,7 +267,11 @@ summary(model2)
 
 Upload DAG
 ```{r}
+install.packages("dagitty")
+library(dagitty)
 
+# download specified DAG from dagitty.net 
+DAG <- downloadGraph("www.dagitty.net/mOWOV4V")
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
