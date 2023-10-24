@@ -1,0 +1,274 @@
+---
+title: "test"
+author: "Ana Martins"
+date: "27/03/2023"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load libraries
+```{r load libraries, echo=FALSE}
+library(tidyverse)
+library(readr)
+library(readxl)
+library(directlabels)
+library(psych)
+library(brms)
+```
+
+# Load data, as.factor 'country' and inspect
+```{r clean consumption data, echo=FALSE, message=FALSE, eval=FALSE}
+data <- read.csv("test1.csv") %>% 
+  mutate(country = as.factor(country))
+glimpse(data)
+```
+
+# Group, filter and summarise data
+```{r}
+data.new <- as.data.frame(apply(data,
+                                2,
+                                function(x) gsub("\\s+","",x)))
+data.new %>% 
+  group_by(data.new$country) %>% 
+  filter(country!="All" & country!="All ") %>% 
+  summarise(number_of_papers = n_distinct(id),
+            iucn_region = first(iucn_region))
+```
+
+# Rank countries and IUCN regions with more studies
+```{r}
+top10_country <- data.new %>% 
+  group_by(country) %>%
+  count() %>%
+  arrange(desc(n))
+
+top10_region <- data.new %>% 
+  group_by(iucn_region) %>%
+  count()%>%
+  arrange(desc(n))
+```
+
+# Merge positive and negative columns
+```{r}
+correlates <- data.new %>%
+  mutate(culinary_traditions = case_match(culinary_traditions_negative,
+                                        "1" ~ "-1", 
+                                        .default = culinary_traditions_positive),
+         religious_traditions = case_match(religious_traditions_negative,
+                                          "1" ~ "-1", 
+                                        .default = religious_traditions_positive),
+         sensory_perception = case_match(sensory_perception_negative,
+                                         "1" ~ "-1", 
+                                        .default = sensory_perception_positive),
+         health_beliefs = case_match(health_beliefs_negative,
+                                     "1" ~ "-1", 
+                                        .default = health_beliefs_positive),
+         eating_habits = case_match(eating_habits_negative,
+                                    "1" ~ "-1", 
+                                        .default = eating_habits_positive),
+         preparation = case_match(preparation_negative,
+                                  "1" ~ "-1", 
+                                        .default = preparation_positive),
+         self_efficacy = case_match(self_efficacy_negative,
+                                    "1" ~ "-1", 
+                                        .default = self_efficacy_positive),
+         price_perception = case_match(price_perception_negative,
+                                        "1" ~ "-1", 
+                                        .default = price_perception_positive),
+         fish_availability = case_match(fish_availability_negative,
+                                         "1" ~ "-1", 
+                                        .default = fish_availability_positive),
+         marketing = case_match(marketing_negative,
+                                 "1" ~ "-1", 
+                                        .default = marketing_postive),
+         livelihood = case_match(livelihood_negative,
+                                 "1" ~ "-1", 
+                                        .default = livelihood_positive))
+```
+
+# Select merged columns and make correlates numeric
+```{r}
+df <- correlates %>%
+  select(iucn_region,
+         country,
+         iso3_code,
+         mislabelling:livelihood)%>%
+  mutate(across(mislabelling:livelihood, as.numeric))
+str(df)
+```
+
+# Taking the mean of each correlate
+```{r}
+data.mean <- df %>% 
+  group_by(country) %>%
+  summarise(iucn_region = first(iucn_region),
+            iso3_code = first(iso3_code),
+            mislabelling = mean (mislabelling),
+            culinary_traditions = mean (culinary_traditions),
+            religious_traditions = mean (religious_traditions),
+            sensory_perception = mean(sensory_perception),
+            health_beliefs = mean(health_beliefs),
+            eating_habits = mean(eating_habits),
+            preparation = mean(preparation),
+            self_efficacy = mean(self_efficacy),
+            price_perception = mean (price_perception), 
+            fish_availability = mean(fish_availability), 
+            marketing = mean (marketing), 
+            livelihood = mean (livelihood))
+```
+
+# Summarising columns and scaling correlates
+```{r}
+poo <- data.mean %>% 
+  select(-c(iucn_region,iso3_code))%>%
+  mutate(across(mislabelling:livelihood, ~scale(., center = T, scale = T)))%>%
+  column_to_rownames(var = "country")
+```
+
+# PCA
+```{r}
+pca_correlates <- prcomp(poo)
+summary(pca_correlates)
+
+#10 PCs explain 92% of variation
+pca_correlates$rotation[,1:10]
+
+correlates_transform = as.data.frame(-pca_correlates$x[,1:10])
+
+factoextra::fviz_nbclust(correlates_transform, kmeans, nstart = 100, method = 'wss')
+factoextra::fviz_nbclust(correlates_transform, kmeans, method = 'silhouette')
+factoextra::fviz_nbclust(correlates_transform, kmeans, method = 'gap_stat')
+```
+
+```{r}
+pca_data <- pca_correlates$x %>%
+  as.data.frame()%>%
+  rownames_to_column()
+full_data <- left_join(data.mean, pca_data, by = c("country" = "rowname"))
+```
+
+#Per country
+```{r}
+#set graphical parameters
+par(mfrow=c(1,1), mar=c(3,2,0.1,1), oma=c(1,1,1,0), bg="white", fg="black") 
+
+#PC1 and PC2
+plot((full_data$PC1), (full_data$PC2), pch=21, bg=as.factor(full_data$iucn_region), xlab="", ylab="", cex=1.5) #type = "null")
+box(col="black", lwd=1.5)
+arrows(0,0,(pca_correlates$rotation[,1]*4),(pca_correlates$rotation[,2]*4), length=0.1, angle=15, col="red", lwd=2.5)
+text(pca_correlates$rotation[,1]*4.1, pca_correlates$rotation[,2]*4.1, label=c("Mislabelling","Culinary Traditions","Religious Traditions","Sensory Perception","Health Beliefs","Eating Habits","Preparation","Self Efficacy","Price Perception","Fish Availability","Marketing","Livelihood"))
+abline(0,0, col="gray50", lty=2)
+abline(v=0, col="gray50", lty=2)
+text((full_data$PC1), (full_data$PC2), data.mean$country, cex=0.5)
+
+#PC2 and PC3
+plot((full_data$PC2), (full_data$PC3), pch=21, bg=as.factor(full_data$iucn_region), xlab="", ylab="", cex=1.5) #type = "null")
+box(col="black", lwd=1.5)
+arrows(0,0,(pca_correlates$rotation[,2]*4),(pca_correlates$rotation[,3]*4), length=0.1, angle=15, col="red", lwd=2.5)
+text(pca_correlates$rotation[,2]*4.1, pca_correlates$rotation[,3]*4.1, label=c("Mislabelling","Culinary Traditions","Religious Traditions","Sensory Perception","Health Beliefs","Eating Habits","Preparation","Self Efficacy","Price Perception","Fish Availability","Marketing","Livelihood"))
+abline(0,0, col="gray50", lty=2)
+abline(v=0, col="gray50", lty=2)
+text((full_data$PC2), (full_data$PC3), data.mean$country, cex=0.5)
+
+#PC3 and PC4
+plot((full_data$PC3), (full_data$PC4), pch=21, bg=as.factor(full_data$iucn_region), xlab="", ylab="", cex=1.5) #type = "null")
+box(col="black", lwd=1.5)
+arrows(0,0,(pca_correlates$rotation[,3]*4),(pca_correlates$rotation[,4]*4), length=0.1, angle=15, col="red", lwd=2.5)
+text(pca_correlates$rotation[,3]*4.1, pca_correlates$rotation[,4]*4.1, label=c("Mislabelling","Culinary Traditions","Religious Traditions","Sensory Perception","Health Beliefs","Eating Habits","Preparation","Self Efficacy","Price Perception","Fish Availability","Marketing","Livelihood"))
+abline(0,0, col="gray50", lty=2)
+abline(v=0, col="gray50", lty=2)
+text((full_data$PC3), (full_data$PC4), data.mean$country, cex=0.5)
+
+#PC4 and PC5
+plot((full_data$PC4), (full_data$PC5), pch=21, bg=as.factor(full_data$iucn_region), xlab="", ylab="", cex=1.5) #type = "null")
+box(col="black", lwd=1.5)
+arrows(0,0,(pca_correlates$rotation[,4]*4),(pca_correlates$rotation[,5]*4), length=0.1, angle=15, col="red", lwd=2.5)
+text(pca_correlates$rotation[,4]*4.1, pca_correlates$rotation[,5]*4.1, label=c("Mislabelling","Culinary Traditions","Religious Traditions","Sensory Perception","Health Beliefs","Eating Habits","Preparation","Self Efficacy","Price Perception","Fish Availability","Marketing","Livelihood"))
+abline(0,0, col="gray50", lty=2)
+abline(v=0, col="gray50", lty=2)
+text((full_data$PC4), (full_data$PC5), data.mean$country, cex=0.5)
+```
+
+# Per region
+```{r}
+pca_region <- full_data %>% 
+  group_by(iucn_region) %>% 
+  summarise(mean_PC1 = mean(PC1), mean_PC2 = mean(PC2),mean_PC3 = mean(PC3), mean_PC4 = mean(PC4), mean_PC5 = mean(PC5),stdev1 = sd(PC1), stdev2 = sd(PC2), stdev3 = sd(PC3), stdev4 = sd(PC4), stdev5 = sd(PC5)) 
+```
+
+```{r}
+#set graphical parameters
+par(mfrow=c(1,1), mar=c(3,2,0.1,1), oma=c(1,1,1,0), bg="white", fg="black")
+
+#PC1 and PC2
+plot((pca_region$mean_PC1), (pca_region$mean_PC2), pch=21, bg=as.factor(pca_region$iucn_region), xlab="", ylab="", cex=1.5) #type = "null")
+box(col="black", lwd=1.5)
+#lines((pca_region$mean_PC1 - stdev1), pca_region$mean_PC1, (pca_region$mean_PC1 + stdev1), pca_region$mean_PC1)
+arrows(0,0,(pca_correlates$rotation[,1]*2),(pca_correlates$rotation[,2]*2), length=0.1, angle=15, col="red", lwd=2.5)
+text(pca_correlates$rotation[,1]*2.1, pca_correlates$rotation[,2]*2.1, label=c("Mislabelling","Culinary Traditions","Religious Traditions","Sensory Perception","Health Beliefs","Eating Habits","Preparation","Self Efficacy","Price Perception","Fish Availability","Marketing","Livelihood"))
+abline(0,0, col="gray50", lty=2)
+abline(v=0, col="gray50", lty=2)
+text((pca_region$mean_PC1), (pca_region$mean_PC2), pca_region$iucn_region, cex=0.5)
+
+#PC2 and PC3
+plot((pca_region$mean_PC2), (pca_region$mean_PC3), pch=21, bg=as.factor(pca_region$iucn_region), xlab="", ylab="", cex=1.5) #type = "null")
+box(col="black", lwd=1.5)
+arrows(0,0,(pca_correlates$rotation[,2]*1),(pca_correlates$rotation[,3]*1), length=0.1, angle=15, col="red", lwd=2.5)
+text(pca_correlates$rotation[,2]*1.1, pca_correlates$rotation[,3]*1.1, label=c("Mislabelling","Culinary Traditions","Religious Traditions","Sensory Perception","Health Beliefs","Eating Habits","Preparation","Self Efficacy","Price Perception","Fish Availability","Marketing","Livelihood"))
+abline(0,0, col="gray50", lty=2)
+abline(v=0, col="gray50", lty=2)
+text((pca_region$mean_PC2), (pca_region$mean_PC3), pca_region$iucn_region, cex=0.5)
+
+#PC3 and PC4
+plot((pca_region$mean_PC3), (pca_region$mean_PC4), pch=21, bg=as.factor(pca_region$iucn_region), xlab="", ylab="", cex=1.5) #type = "null")
+box(col="black", lwd=1.5)
+arrows(0,0,(pca_correlates$rotation[,3]*1),(pca_correlates$rotation[,4]*1), length=0.1, angle=15, col="red", lwd=2.5)
+text(pca_correlates$rotation[,3]*1.1, pca_correlates$rotation[,4]*1.1, label=c("Mislabelling","Culinary Traditions","Religious Traditions","Sensory Perception","Health Beliefs","Eating Habits","Preparation","Self Efficacy","Price Perception","Fish Availability","Marketing","Livelihood"))
+abline(0,0, col="gray50", lty=2)
+abline(v=0, col="gray50", lty=2)
+text((pca_region$mean_PC3), (pca_region$mean_PC4), pca_region$iucn_region, cex=0.5)
+
+#PC4 and PC5
+plot((pca_region$mean_PC4), (pca_region$mean_PC5), pch=21, bg=as.factor(pca_region$iucn_region), xlab="", ylab="", cex=1.5) #type = "null")
+box(col="black", lwd=1.5)
+arrows(0,0,(pca_correlates$rotation[,4]*1),(pca_correlates$rotation[,5]*1), length=0.1, angle=15, col="red", lwd=2.5)
+text(pca_correlates$rotation[,4]*1.1, pca_correlates$rotation[,5]*1.1, label=c("Mislabelling","Culinary Traditions","Religious Traditions","Sensory Perception","Health Beliefs","Eating Habits","Preparation","Self Efficacy","Price Perception","Fish Availability","Marketing","Livelihood"))
+abline(0,0, col="gray50", lty=2)
+abline(v=0, col="gray50", lty=2)
+text((pca_region$mean_PC4), (pca_region$mean_PC5), pca_region$iucn_region, cex=0.5)
+```
+
+# Models
+```{r}
+cons <- read.csv("Total_consumption_2012-2021.csv")
+
+country_list <- unique(full_data$iso3_code)
+
+full_data2 <- cons %>%
+  filter(ISO3_Code %in% country_list) %>% 
+  left_join(full_data, by = c("ISO3_Code" = "iso3_code")) 
+```
+
+```{r}
+model1 <- glm(consumption~PC1, data = full_data2)
+summary(model1)
+```
+
+Model with all variables
+```{r}
+model2 <- glm(consumption~mislabelling+culinary_traditions+religious_traditions+sensory_perception+health_beliefs+eating_habits+preparation+self_efficacy+price_perception+fish_availability+marketing+livelihood, data = full_data2)
+summary(model2)
+```
+
+Upload DAG
+```{r}
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
