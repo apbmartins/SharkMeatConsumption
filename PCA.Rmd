@@ -259,7 +259,7 @@ model1 <- glm(consumption~PC1, data = full_data2)
 summary(model1)
 ```
 
-Model with all variables
+Direct effect model
 ```{r}
 model2 <- glm(consumption~mislabelling+culinary_traditions+religious_traditions+sensory_perception+health_beliefs+eating_habits+preparation+self_efficacy+price_perception+fish_availability+marketing+livelihood, data = full_data2)
 summary(model2)
@@ -267,11 +267,48 @@ summary(model2)
 
 Upload DAG
 ```{r}
+# install dagitty package
 install.packages("dagitty")
 library(dagitty)
 
 # download specified DAG from dagitty.net 
-DAG <- downloadGraph("www.dagitty.net/mOWOV4V")
+DAG <- dagitty("dag {
+culinary_traditions -> consumption
+culinary_traditions -> eating_habits
+eating_habits -> consumption
+fish_availability -> consumption
+health_beliefs -> consumption
+livelihood -> consumption
+marketing -> consumption
+marketing -> health_beliefs
+mislabelling -> consumption
+preparation -> consumption
+preparation -> self_efficacy
+price_perception -> consumption
+religious_traditions -> consumption
+religious_traditions -> culinary_traditions
+self_efficacy -> consumption
+sensory_perception -> consumption
+}")
+
+# plot DAG
+plot(graphLayout(DAG))
+```
+
+Diagnostic tests
+```{r}
+# Creat new dataframe with matching columns
+full_data3 <- full_data2 %>% 
+  select(consumption, mislabelling:livelihood)
+glimpse(full_data3)
+
+# evaluate the d-separation implications of our DAG with our simulated dataset 
+test <- localTests(DAG, full_data3)
+
+# perform Holm-Bonferrino correction to mitigate problems around multiple testing 
+test$p.value <- p.adjust(test$p.value) 
+
+test # should show all p values above 0.05, suggesting DAG-data consistency
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
