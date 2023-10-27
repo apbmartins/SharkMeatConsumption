@@ -277,10 +277,14 @@ culinary_traditions -> consumption
 culinary_traditions -> eating_habits
 eating_habits -> consumption
 fish_availability -> consumption
+fish_availability -> self_efficacy
 health_beliefs -> consumption
 livelihood -> consumption
 marketing -> consumption
+marketing -> eating_habits
 marketing -> health_beliefs
+measurement_error -> consumption
+measurement_process -> measurement_error
 mislabelling -> consumption
 preparation -> consumption
 preparation -> self_efficacy
@@ -308,7 +312,14 @@ test <- localTests(DAG, full_data3)
 # perform Holm-Bonferrino correction to mitigate problems around multiple testing 
 test$p.value <- p.adjust(test$p.value) 
 
-test # should show all p values above 0.05, suggesting DAG-data consistency
+test # should show all p values above 0.05 and estimate below 0.3, suggesting DAG-data consistency
+```
+
+Model (self-efficacy)
+```{r}
+priors.slf <- c(prior(normal(0, 10), "b"), prior(normal(0, 50), "intercept"),     prior(student_t(3, 0, 20), "sd"), prior(student_t(3, 0, 20), "sigma"))
+
+model_slf <- brm(consumption ~ self_efficacy + fish_availability + preparation, data = full_data3, family = gaussian(), iter = 10000, save_pars(all), prior = priors.slf, control = list(adapt_delta = 0.99))
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
