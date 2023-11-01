@@ -315,11 +315,23 @@ test$p.value <- p.adjust(test$p.value)
 test # should show all p values above 0.05 and estimate below 0.3, suggesting DAG-data consistency
 ```
 
+Setting flat priors
+```{r}
+bprior <- c(set_prior("normal(0,10)", dpar=c("self_efficacy", "fish_availability", "preparation")), prior_(~cauchy(0,2), class = ~Intercept), prior_(~cauchy(0,2), class = ~sigma))
+
+#priors.cons <- c(prior(normal(0, 10), class = "b"))#, prior(normal(0, 50),coef =  ~Intercept)), prior(student_t(3, 0, 20), "sd"), prior(student_t(3, 0, 20), "sigma"))
+
+#get_prior(consumption ~ self_efficacy + fish_availability + preparation, data = full_data3, family = gaussian())
+```
+
 Model (self-efficacy)
 ```{r}
-priors.slf <- c(prior(normal(0, 10), "b"), prior(normal(0, 50), "intercept"),     prior(student_t(3, 0, 20), "sd"), prior(student_t(3, 0, 20), "sigma"))
+model_slf <- brm(consumption ~ self_efficacy + fish_availability + preparation, data = full_data3, family = gaussian(), iter = 10000, save_pars(all), prior = bprior, control = list(adapt_delta = 0.99))
+```
 
-model_slf <- brm(consumption ~ self_efficacy + fish_availability + preparation, data = full_data3, family = gaussian(), iter = 10000, save_pars(all), prior = priors.slf, control = list(adapt_delta = 0.99))
+Model (mislabelling)
+```{r}
+model_mis <- brm(consumption ~ mislabelling, data = full_data3, family = gaussian(), iter = 10000, save_pars(all), prior = priors.cons, control = list(adapt_delta = 0.99))
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
