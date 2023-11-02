@@ -33,11 +33,11 @@ glimpse(data)
 data.new <- as.data.frame(apply(data,
                                 2,
                                 function(x) gsub("\\s+","",x)))
-data.new %>% 
-  group_by(data.new$country) %>% 
+papers <- data.new %>% 
+  group_by(country) %>% 
   filter(country!="All" & country!="All ") %>% 
-  summarise(number_of_papers = n_distinct(id),
-            iucn_region = first(iucn_region))
+  summarise(number_of_papers = n_distinct(id)) %>%
+  mutate(error = 1/number_of_papers)
 ```
 
 # Rank countries and IUCN regions with more studies
@@ -303,7 +303,9 @@ Diagnostic tests
 ```{r}
 # Creat new dataframe with matching columns
 full_data3 <- full_data2 %>% 
-  select(consumption, mislabelling:livelihood)
+  left_join(papers, by = "country")%>%
+  select(country, consumption, mislabelling:livelihood, error) 
+  
 glimpse(full_data3)
 
 # evaluate the d-separation implications of our DAG with our simulated dataset 
@@ -315,23 +317,72 @@ test$p.value <- p.adjust(test$p.value)
 test # should show all p values above 0.05 and estimate below 0.3, suggesting DAG-data consistency
 ```
 
-Setting flat priors
+Standirdise consumption
 ```{r}
-bprior <- c(set_prior("normal(0,10)", dpar=c("self_efficacy", "fish_availability", "preparation")), prior_(~cauchy(0,2), class = ~Intercept), prior_(~cauchy(0,2), class = ~sigma))
-
-#priors.cons <- c(prior(normal(0, 10), class = "b"))#, prior(normal(0, 50),coef =  ~Intercept)), prior(student_t(3, 0, 20), "sd"), prior(student_t(3, 0, 20), "sigma"))
-
-#get_prior(consumption ~ self_efficacy + fish_availability + preparation, data = full_data3, family = gaussian())
+full_data4 <- full_data3 %>% 
+  mutate(consumption = scale(consumption, center = T, scale = T))
 ```
 
-Model (self-efficacy)
+Setting flat priors
 ```{r}
-model_slf <- brm(consumption ~ self_efficacy + fish_availability + preparation, data = full_data3, family = gaussian(), iter = 10000, save_pars(all), prior = bprior, control = list(adapt_delta = 0.99))
+bprior <- prior(normal(0,10), class = b, coef = mislabelling)
 ```
 
 Model (mislabelling)
 ```{r}
-model_mis <- brm(consumption ~ mislabelling, data = full_data3, family = gaussian(), iter = 10000, save_pars(all), prior = priors.cons, control = list(adapt_delta = 0.99))
+model_mis <- brm(consumption ~ mislabelling, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = bprior, control = list(adapt_delta = 0.99))
+summary(model_mis)
+plot(model_mis)
+```
+
+Model (self_efficacy)
+```{r}
+cprior <- c(prior(normal(0,10), class = b, coef = fish_availability), prior(normal(0,10), class = b, coef = preparation), prior(normal(0,10), class = b, coef = self_efficacy))
+
+model_sel <- brm(consumption ~ self_efficacy + fish_availability + preparation, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = cprior, control = list(adapt_delta = 0.99))
+
+summary(model_sel)
+plot(model_sel)
+```
+
+Model (culinary_tradition)
+```{r}
+dprior <- c(prior(normal(0,10), class = b, coef = culinary_traditions), prior(normal(0,10), class = b, coef = religious_traditions))
+
+model_cul <- brm(consumption ~ culinary_traditions + religious_traditions, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = dprior, control = list(adapt_delta = 0.99))
+
+summary(model_cul)
+plot(model_cul)
+```
+
+Model (health_beliefs)
+```{r}
+eprior <- c(prior(normal(0,10), class = b, coef = health_beliefs), prior(normal(0,10), class = b, coef = marketing))
+
+model_hea <- brm(consumption ~ health_beliefs + marketing, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = eprior, control = list(adapt_delta = 0.99))
+
+summary(model_hea)
+plot(model_hea)
+```
+
+Model (eating_habits)
+```{r}
+fprior <- c(prior(normal(0,10), class = b, coef = culinary_traditions), prior(normal(0,10), class = b, coef = marketing), prior(normal(0,10), class = b, coef = eating_habits))
+
+model_eat <- brm(consumption ~ eating_habits + culinary_traditions + marketing, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = fprior, control = list(adapt_delta = 0.99))
+
+summary(model_eat)
+plot(model_eat)
+```
+
+Model (measurament error)
+```{r}
+#prior <- c(prior(normal(0,10), class = b, coef = culinary_traditions), prior(normal(0,10), class = b, coef = marketing), prior(normal(0,10), class = b, coef = eating_habits))
+
+model_err <- brm(consumption ~ error, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), control = list(adapt_delta = 0.99))
+
+summary(model_err)
+plot(model_err)
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
