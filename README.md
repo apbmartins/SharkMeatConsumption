@@ -1,8 +1,9 @@
-# SharkMeatConsumption
+# Global Shark Meat Consumption
 
-This is for the code and data for the global shark meat consumption project
+In this project, we aim to evaluate shark and ray meat consumption on a global scale, and identify the main correlates of consumption focusing on socioeconomic and cultural dimensions. Here you will find the R code and data we used to achieve that.
 
 
+Current DAG (dagitty.org)-> 
 dag {
 bb="0,0,1,1"
 consumption [outcome,pos="0.440,0.407"]
