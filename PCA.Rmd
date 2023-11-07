@@ -1,6 +1,6 @@
 ---
 title: "test"
-author: "Ana Martins"
+author: "Ana Martins & Chris Mull"
 date: "27/03/2023"
 output: pdf_document
 editor_options: 
@@ -40,7 +40,7 @@ papers <- data.new %>%
   mutate(error = 1/number_of_papers)
 ```
 
-# Rank countries and IUCN regions with more studies
+# Rank countries and IUCN regions by number of studies
 ```{r}
 top10_country <- data.new %>% 
   group_by(country) %>%
@@ -53,7 +53,7 @@ top10_region <- data.new %>%
   arrange(desc(n))
 ```
 
-# Merge positive and negative columns
+# Merge positive and negative correlates into one column
 ```{r}
 correlates <- data.new %>%
   mutate(culinary_traditions = case_match(culinary_traditions_negative,
@@ -102,7 +102,7 @@ df <- correlates %>%
 str(df)
 ```
 
-# Taking the mean of each correlate
+# Take the mean of each correlate 
 ```{r}
 data.mean <- df %>% 
   group_by(country) %>%
@@ -122,7 +122,7 @@ data.mean <- df %>%
             livelihood = mean (livelihood))
 ```
 
-# Summarising columns and scaling correlates
+# Summarise columns and scale/center correlates
 ```{r}
 poo <- data.mean %>% 
   select(-c(iucn_region,iso3_code))%>%
@@ -130,7 +130,7 @@ poo <- data.mean %>%
   column_to_rownames(var = "country")
 ```
 
-# PCA
+# Run PCA analysis
 ```{r}
 pca_correlates <- prcomp(poo)
 summary(pca_correlates)
@@ -145,14 +145,16 @@ factoextra::fviz_nbclust(correlates_transform, kmeans, method = 'silhouette')
 factoextra::fviz_nbclust(correlates_transform, kmeans, method = 'gap_stat')
 ```
 
+# Combine correlates and PC values in a single dataframe
 ```{r}
 pca_data <- pca_correlates$x %>%
   as.data.frame()%>%
   rownames_to_column()
+
 full_data <- left_join(data.mean, pca_data, by = c("country" = "rowname"))
 ```
 
-#Per country
+# Plot PC values per country
 ```{r}
 #set graphical parameters
 par(mfrow=c(1,1), mar=c(3,2,0.1,1), oma=c(1,1,1,0), bg="white", fg="black") 
@@ -194,13 +196,14 @@ abline(v=0, col="gray50", lty=2)
 text((full_data$PC4), (full_data$PC5), data.mean$country, cex=0.5)
 ```
 
-# Per region
+# Filter PC values per region and calculate the mean
 ```{r}
 pca_region <- full_data %>% 
   group_by(iucn_region) %>% 
   summarise(mean_PC1 = mean(PC1), mean_PC2 = mean(PC2),mean_PC3 = mean(PC3), mean_PC4 = mean(PC4), mean_PC5 = mean(PC5),stdev1 = sd(PC1), stdev2 = sd(PC2), stdev3 = sd(PC3), stdev4 = sd(PC4), stdev5 = sd(PC5)) 
 ```
 
+# Plot PC values per region
 ```{r}
 #set graphical parameters
 par(mfrow=c(1,1), mar=c(3,2,0.1,1), oma=c(1,1,1,0), bg="white", fg="black")
@@ -243,7 +246,8 @@ abline(v=0, col="gray50", lty=2)
 text((pca_region$mean_PC4), (pca_region$mean_PC5), pca_region$iucn_region, cex=0.5)
 ```
 
-# Models
+## Bayesian Models
+# Load data and filter by country and IUCN region
 ```{r}
 cons <- read.csv("Total_consumption_2012-2021.csv")
 
@@ -254,18 +258,7 @@ full_data2 <- cons %>%
   left_join(full_data, by = c("ISO3_Code" = "iso3_code")) 
 ```
 
-```{r}
-model1 <- glm(consumption~PC1, data = full_data2)
-summary(model1)
-```
-
-Direct effect model
-```{r}
-model2 <- glm(consumption~mislabelling+culinary_traditions+religious_traditions+sensory_perception+health_beliefs+eating_habits+preparation+self_efficacy+price_perception+fish_availability+marketing+livelihood, data = full_data2)
-summary(model2)
-```
-
-Upload DAG
+# Upload DAG from dagitty and plot it
 ```{r}
 # install dagitty package
 install.packages("dagitty")
@@ -299,7 +292,7 @@ sensory_perception -> consumption
 plot(graphLayout(DAG))
 ```
 
-Diagnostic tests
+# Run diagnostic tests
 ```{r}
 # Creat new dataframe with matching columns
 full_data3 <- full_data2 %>% 
@@ -308,56 +301,62 @@ full_data3 <- full_data2 %>%
   
 glimpse(full_data3)
 
-# evaluate the d-separation implications of our DAG with our simulated dataset 
+# Evaluate the d-separation implications of our DAG with our simulated dataset 
 test <- localTests(DAG, full_data3)
 
-# perform Holm-Bonferrino correction to mitigate problems around multiple testing 
+# Perform Holm-Bonferrino correction to mitigate problems around multiple testing 
 test$p.value <- p.adjust(test$p.value) 
 
-test # should show all p values above 0.05 and estimate below 0.3, suggesting DAG-data consistency
+# test should show all p values above 0.05 and estimate below 0.3, suggesting DAG-data consistency
 ```
 
-Standirdise consumption
+# Standirdise consumption estimates
 ```{r}
 full_data4 <- full_data3 %>% 
   mutate(consumption = scale(consumption, center = T, scale = T))
 ```
 
-Setting flat priors
+# Model A (mislabelling)
 ```{r}
-bprior <- prior(normal(0,10), class = b, coef = mislabelling)
-```
+# Set flat priors for all models
+aprior <- prior(normal(0,10), class = b, coef = mislabelling)# No open biasing paths
 
-Model (mislabelling)
-```{r}
-model_mis <- brm(consumption ~ mislabelling, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = bprior, control = list(adapt_delta = 0.99))
+model_mis <- brm(consumption ~ mislabelling, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = aprior, control = list(adapt_delta = 0.99))
 summary(model_mis)
 plot(model_mis)
 ```
 
-Model (self_efficacy)
+# Model B (culinary_tradition)
 ```{r}
-cprior <- c(prior(normal(0,10), class = b, coef = fish_availability), prior(normal(0,10), class = b, coef = preparation), prior(normal(0,10), class = b, coef = self_efficacy))
+bprior <- c(prior(normal(0,10), class = b, coef = culinary_traditions), prior(normal(0,10), class = b, coef = religious_traditions)) # Biasing paths are open (religious_traditions)
 
-model_sel <- brm(consumption ~ self_efficacy + fish_availability + preparation, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = cprior, control = list(adapt_delta = 0.99))
-
-summary(model_sel)
-plot(model_sel)
-```
-
-Model (culinary_tradition)
-```{r}
-dprior <- c(prior(normal(0,10), class = b, coef = culinary_traditions), prior(normal(0,10), class = b, coef = religious_traditions))
-
-model_cul <- brm(consumption ~ culinary_traditions + religious_traditions, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = dprior, control = list(adapt_delta = 0.99))
+model_cul <- brm(consumption ~ culinary_traditions + religious_traditions, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = bprior, control = list(adapt_delta = 0.99))
 
 summary(model_cul)
 plot(model_cul)
 ```
 
-Model (health_beliefs)
+# Model C (religious_traditions)
 ```{r}
-eprior <- c(prior(normal(0,10), class = b, coef = health_beliefs), prior(normal(0,10), class = b, coef = marketing))
+cprior <- prior(normal(0,10), class = b, coef = religious_traditions)# No open biasing paths
+
+model_rel <- brm(consumption ~ religious_traditions, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = cprior, control = list(adapt_delta = 0.99))
+summary(model_rel)
+plot(model_rel)
+```
+
+# Model D (sensory_perception)
+```{r}
+dprior <- prior(normal(0,10), class = b, coef = sensory_perception)# No open biasing paths
+
+model_sen <- brm(consumption ~ sensory_perception, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = dprior, control = list(adapt_delta = 0.99))
+summary(model_sen)
+plot(model_sen)
+```
+
+# Model E (health_beliefs)
+```{r}
+eprior <- c(prior(normal(0,10), class = b, coef = health_beliefs), prior(normal(0,10), class = b, coef = marketing)) # Biasing paths are open (marketing).
 
 model_hea <- brm(consumption ~ health_beliefs + marketing, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = eprior, control = list(adapt_delta = 0.99))
 
@@ -365,9 +364,9 @@ summary(model_hea)
 plot(model_hea)
 ```
 
-Model (eating_habits)
+# Model F (eating_habits)
 ```{r}
-fprior <- c(prior(normal(0,10), class = b, coef = culinary_traditions), prior(normal(0,10), class = b, coef = marketing), prior(normal(0,10), class = b, coef = eating_habits))
+fprior <- c(prior(normal(0,10), class = b, coef = culinary_traditions), prior(normal(0,10), class = b, coef = marketing), prior(normal(0,10), class = b, coef = eating_habits)) # Biasing paths are open (culinary_traditions, marketing).
 
 model_eat <- brm(consumption ~ eating_habits + culinary_traditions + marketing, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = fprior, control = list(adapt_delta = 0.99))
 
@@ -375,7 +374,62 @@ summary(model_eat)
 plot(model_eat)
 ```
 
-Model (measurament error)
+# Model G (preparation)
+```{r}
+gprior <- prior(normal(0,10), class = b, coef = preparation)# No open biasing paths
+
+model_pre <- brm(consumption ~ preparation, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = gprior, control = list(adapt_delta = 0.99))
+summary(model_pre)
+plot(model_pre)
+```
+
+# Model H (self_efficacy)
+```{r}
+hprior <- c(prior(normal(0,10), class = b, coef = fish_availability), prior(normal(0,10), class = b, coef = preparation), prior(normal(0,10), class = b, coef = self_efficacy)) # Biasing paths are open (fish_availability, preparation).
+
+model_sel <- brm(consumption ~ self_efficacy + fish_availability + preparation, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = hprior, control = list(adapt_delta = 0.99))
+
+summary(model_sel)
+plot(model_sel)
+```
+
+# Model I (price_perception)
+```{r}
+iprior <- prior(normal(0,10), class = b, coef = price_perception)# No open biasing paths
+
+model_pri <- brm(consumption ~ price_perception, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = iprior, control = list(adapt_delta = 0.99))
+summary(model_pri)
+plot(model_pri)
+```
+
+# Model J (fish_availability)
+```{r}
+jprior <- prior(normal(0,10), class = b, coef = fish_availability)# No open biasing paths
+
+model_fis <- brm(consumption ~ fish_availability, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = jprior, control = list(adapt_delta = 0.99))
+summary(model_fis)
+plot(model_fis)
+```
+
+# Model K (marketing)
+```{r}
+kprior <- prior(normal(0,10), class = b, coef = marketing)# No open biasing paths
+
+model_mar <- brm(consumption ~ marketing, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = kprior, control = list(adapt_delta = 0.99))
+summary(model_mar)
+plot(model_mar)
+```
+
+# Model L (livelihood)
+```{r}
+lprior <- prior(normal(0,10), class = b, coef = livelihood)# No open biasing paths
+
+model_liv <- brm(consumption ~ livelihood, data = full_data4, family = gaussian(), iter = 10000, save_pars = save_pars(all = TRUE), prior = lprior, control = list(adapt_delta = 0.99))
+summary(model_liv)
+plot(model_liv)
+```
+
+# Model M (measurament error)
 ```{r}
 #prior <- c(prior(normal(0,10), class = b, coef = culinary_traditions), prior(normal(0,10), class = b, coef = marketing), prior(normal(0,10), class = b, coef = eating_habits))
 
