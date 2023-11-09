@@ -439,5 +439,29 @@ summary(model_err)
 plot(model_err)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+# Map of global consumption
+```{r}
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(ggplot2)
+library(sf)
+library(tidyverse)
+library(sf)
+library(viridis)
 
+# Load data
+total_consumption <- read.csv("Total_consumption_2012-2021.csv")
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Linking data frames
+data1 <- total_consumption %>%
+  left_join(world, by = c("ISO3_Code" = "brk_a3"))
+
+# Mapping
+ggplot(data = data1) +
+    geom_sf(aes(fill = consumption, geometry = geometry)) +
+            xlab("Longitude") + ylab("Latitude") +
+            ggtitle("Global Consumprtion of Shark and Ray Meat") +
+   scale_fill_viridis_c(option = "viridis", trans = "sqrt", name="Total consumption (mt)", na.value = "grey50")
+```
