@@ -439,7 +439,7 @@ summary(model_err)
 plot(model_err)
 ```
 
-# Map of global consumption
+# Map of total global consumption
 ```{r}
 library(rnaturalearth)
 library(rnaturalearthdata)
@@ -465,3 +465,30 @@ ggplot(data = data1) +
             ggtitle("Global Consumprtion of Shark and Ray Meat") +
    scale_fill_viridis_c(option = "viridis", trans = "sqrt", name="Total consumption (mt)", na.value = "grey50")
 ```
+
+# Map of global consumption per capita
+```{r}
+
+library(tmap)
+
+# Load data
+pop100km <- read.csv("nagdc-population-landscape-and-climate-estimates-version-3.csv")
+
+# Linking data frames
+data2 <- pop100km %>%
+  filter(THEMENAME=="COASTAL PROXIMITY: 100KM ZONE") %>% 
+  left_join(data1, by = c("ISO3V10" = "ISO3_Code")) 
+
+# Calculate per capita consumption
+as.numeric(data2$POPULATION2010)
+data3 <- mutate(data2, consumption_pc = consumption/POPULATION2010)
+plot(data3$consumption_pc)
+
+# Mapping
+ggplot(data = data3) +
+    geom_sf(aes(fill = consumption_pc, geometry = geometry)) +
+            xlab("Longitude") + ylab("Latitude") +
+            ggtitle("Global Consumprtion of Shark and Ray Meat") +
+   scale_fill_viridis_c(option = "viridis", trans = "sqrt", name="Per capita consumption", na.value = "grey50", breaks=c(0, 0.02,0.04,0.06,0.08, 1))
+```
+
