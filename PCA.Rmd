@@ -468,9 +468,6 @@ ggplot(data = data1) +
 
 # Map of global consumption per capita
 ```{r}
-
-library(tmap)
-
 # Load data
 pop100km <- read.csv("nagdc-population-landscape-and-climate-estimates-version-3.csv")
 
@@ -485,10 +482,13 @@ data3 <- mutate(data2, consumption_pc = consumption/POPULATION2010)
 plot(data3$consumption_pc)
 
 # Mapping
-ggplot(data = data3) +
+ ggplot(data = data3) +
     geom_sf(aes(fill = consumption_pc, geometry = geometry)) +
             xlab("Longitude") + ylab("Latitude") +
             ggtitle("Global Consumprtion of Shark and Ray Meat") +
-   scale_fill_viridis_c(option = "viridis", trans = "sqrt", name="Per capita consumption", na.value = "grey50", breaks=c(0, 0.02,0.04,0.06,0.08, 1))
+   scale_fill_viridis_c(option = "viridis", trans = "sqrt", name="Per capita consumption", na.value = "grey50", breaks=c(0, 0.02,0.04,0.06,0.08, 1)) +
+  theme(panel.grid.major = element_blank(),
+                 panel.grid.minor = element_blank(),
+                 panel.background = element_rect(fill = 'white', colour = 'white'))
 ```
 
