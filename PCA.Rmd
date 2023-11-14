@@ -452,43 +452,39 @@ library(viridis)
 # Load data
 total_consumption <- read.csv("Total_consumption_2012-2021.csv")
 
+pop100km <- read.csv("nagdc-population-landscape-and-climate-estimates-version-3.csv") %>% filter(THEMENAME=="COASTAL PROXIMITY: 100KM ZONE") %>% select(ISO3V10, POPULATION2010) %>% group_by(ISO3V10) %>% 
+  summarise(coastal_population = sum(POPULATION2010))
+
 world <- ne_countries(scale = "medium", returnclass = "sf")
 
-# Linking data frames
-data1 <- total_consumption %>%
-  left_join(world, by = c("ISO3_Code" = "brk_a3"))
+#generate average consumption
+dat_mean <- total_consumption %>% 
+  group_by(ISO3_Code) %>% 
+  mutate(mean_consumption = mean(consumption)) %>% 
+  left_join(pop100km, by = c("ISO3_Code" = "ISO3V10")) %>% 
+  mutate(consumption_pc = mean_consumption/coastal_population)
+  
+dat_map <- world %>% 
+  left_join(dat_mean, by = c("brk_a3" = "ISO3_Code"))%>% 
+  replace_na(list(mean_consumption = 0, consumption_pc = 0))
 
-# Mapping
-ggplot(data = data1) +
-    geom_sf(aes(fill = consumption, geometry = geometry)) +
-            xlab("Longitude") + ylab("Latitude") +
-            ggtitle("Global Consumprtion of Shark and Ray Meat") +
-   scale_fill_viridis_c(option = "viridis", trans = "sqrt", name="Total consumption (mt)", na.value = "grey50")
-```
+# Mapping (Total)
+ggplot(data = dat_map) +
+    geom_sf(aes(fill = mean_consumption, geometry = geometry)) +
+            ggtitle("Global Consumption of Shark and Ray Meat") +
+   scale_fill_gradient(low = "#ece7f2", high = "#2b8cbe", name="Total consumption (mt)") +
+  theme(panel.grid.major = element_blank(),
+                 panel.grid.minor = element_blank(),
+                 panel.background = element_rect(fill = 'white', colour = 'white'))
 
-# Map of global consumption per capita
-```{r}
-# Load data
-pop100km <- read.csv("nagdc-population-landscape-and-climate-estimates-version-3.csv")
-
-# Linking data frames
-data2 <- pop100km %>%
-  filter(THEMENAME=="COASTAL PROXIMITY: 100KM ZONE") %>% 
-  left_join(data1, by = c("ISO3V10" = "ISO3_Code")) 
-
-# Calculate per capita consumption
-as.numeric(data2$POPULATION2010)
-data3 <- mutate(data2, consumption_pc = consumption/POPULATION2010)
-plot(data3$consumption_pc)
-
-# Mapping
- ggplot(data = data3) +
+# Mapping (Per capita)
+ggplot(data = dat_map) +
     geom_sf(aes(fill = consumption_pc, geometry = geometry)) +
-            xlab("Longitude") + ylab("Latitude") +
-            ggtitle("Global Consumprtion of Shark and Ray Meat") +
-   scale_fill_viridis_c(option = "viridis", trans = "sqrt", name="Per capita consumption", na.value = "grey50", breaks=c(0, 0.02,0.04,0.06,0.08, 1)) +
+            ggtitle("Per Capita Consumption of Shark and Ray Meat") +
+   scale_fill_gradient(low = "#ece7f2", high = "#2b8cbe", name="Per Capita Consumption (mt/coastal population)") +
   theme(panel.grid.major = element_blank(),
                  panel.grid.minor = element_blank(),
                  panel.background = element_rect(fill = 'white', colour = 'white'))
 ```
+
 
